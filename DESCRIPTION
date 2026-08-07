@@ -1,7 +1,7 @@
 Package: rsystemd
 Type: Package
 Title: Read-Only Introspection of 'systemd' Units and the Journal
-Version: 0.0.1.1
+Version: 0.0.1.2
 Date: 2026-08-07
 Authors@R: c(
     person("Troy", "Hernandez", role = c("aut", "cre"), email = "troy@cornball.ai",
