@@ -31,8 +31,11 @@ run_system <- function(cmd, args) {
         stop_rsystemd("backend tool not found: ", cmd,
                       class = "rsystemd_missing_tool")
     }
+    ## TZ=UTC makes systemctl show timestamps parse deterministically;
+    ## journalctl JSON timestamps are usec-epoch and unaffected.
     out <- suppressWarnings(
-                            system2(cmd, args, stdout = TRUE, stderr = FALSE, env = "LC_ALL=C")
+                            system2(cmd, args, stdout = TRUE, stderr = FALSE,
+                                    env = c("LC_ALL=C", "TZ=UTC"))
     )
     status <- attr(out, "status")
     list(
