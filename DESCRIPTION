@@ -13,6 +13,8 @@ Description: Structured, read-only queries of 'systemd' state: units, timers,
     mutation APIs arrive in a later phase.
 License: MIT + file LICENSE
 OS_type: unix
+SystemRequirements: systemd (>= 249, for systemctl JSON output)
+Imports: jsonlite
 Suggests: tinytest
 Encoding: UTF-8
 Config/roxygen2/version: 8.0.0
