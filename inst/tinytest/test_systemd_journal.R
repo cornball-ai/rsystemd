@@ -21,7 +21,6 @@ cols <- c("time", "priority", "unit", "pid", "message")
 # --- Recorded real NDJSON parses to the contracted shape ---
 
 old <- rsystemd:::set_runner(fake(fx("journalctl-json.txt")))
-on.exit(rsystemd:::set_runner(old), add = TRUE)
 df <- systemd_journal(n = 20L)
 rsystemd:::set_runner(old)
 
