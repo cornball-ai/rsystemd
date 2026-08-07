@@ -1,0 +1,11 @@
+MainPID=2108
+NRestarts=0
+MemoryCurrent=22196224
+Id=ssh.service
+Description=OpenBSD Secure Shell server
+LoadState=loaded
+ActiveState=active
+SubState=running
+FragmentPath=/usr/lib/systemd/system/ssh.service
+UnitFileState=enabled
+ActiveEnterTimestamp=Wed 2026-07-29 19:31:16 UTC

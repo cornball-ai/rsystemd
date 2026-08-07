@@ -1,0 +1,11 @@
+MainPID=0
+NRestarts=0
+MemoryCurrent=[not set]
+Id=nosuchunit-xyzzy.service
+Description=nosuchunit-xyzzy.service
+LoadState=not-found
+ActiveState=inactive
+SubState=dead
+FragmentPath=
+UnitFileState=
+ActiveEnterTimestamp=

@@ -1,4 +1,7 @@
 # tinyrox says don't edit this manually, but it can't stop you!
 
 export(systemd_journal)
+export(systemd_state)
+export(systemd_timers)
+export(systemd_unit_info)
 export(systemd_units)
