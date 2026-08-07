@@ -1,0 +1,18 @@
+Package: rsystemd
+Type: Package
+Title: Read-Only Introspection of 'systemd' Units and the Journal
+Version: 0.0.1
+Date: 2026-08-07
+Authors@R: c(
+    person("Troy", "Hernandez", role = c("aut", "cre"), email = "troy@cornball.ai",
+           comment = c(ORCID = "0009-0005-4248-604X")),
+    person("cornball.ai", role = "cph"))
+Description: Structured, read-only queries of 'systemd' state: units, timers,
+    unit properties, overall system state, and journal entries, returned as
+    plain data frames. Part of the Runix system-administration framework;
+    mutation APIs arrive in a later phase.
+License: MIT + file LICENSE
+OS_type: unix
+Suggests: tinytest
+Encoding: UTF-8
+Config/roxygen2/version: 8.0.0
