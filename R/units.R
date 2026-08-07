@@ -32,22 +32,19 @@ systemd_units <- function(pattern = NULL) {
 ## Pure parser, separated from the runner so fixture tests exercise it
 ## offline. Fail-closed: invalid JSON or missing fields is an error.
 parse_units_json <- function(txt) {
-    empty <- data.frame(
-        unit = character(), load_state = character(),
-        active_state = character(), sub_state = character(),
-        description = character(),
-        stringsAsFactors = FALSE
-    )
+    empty <- data.frame(unit = character(), load_state = character(),
+                        active_state = character(), sub_state = character(),
+                        description = character(), stringsAsFactors = FALSE)
     if (!nzchar(trimws(txt))) {
         return(empty)
     }
     dat <- tryCatch(
-        jsonlite::fromJSON(txt),
-        error = function(e) {
-            stop_rsystemd("unparseable systemctl JSON output: ",
-                conditionMessage(e),
-                class = "runix_parse_error")
-        }
+                    jsonlite::fromJSON(txt),
+                    error = function(e) {
+        stop_rsystemd("unparseable systemctl JSON output: ",
+                      conditionMessage(e),
+                      class = "runix_parse_error")
+    }
     )
     if (length(dat) == 0L) {
         return(empty)
@@ -56,13 +53,13 @@ parse_units_json <- function(txt) {
     missing <- setdiff(need, names(dat))
     if (length(missing) > 0L) {
         stop_rsystemd("systemctl JSON output missing field(s): ",
-            paste(missing, collapse = ", "),
-            class = "runix_parse_error")
+                      paste(missing, collapse = ", "),
+                      class = "runix_parse_error")
     }
     data.frame(
-        unit = dat$unit, load_state = dat$load,
-        active_state = dat$active, sub_state = dat$sub,
-        description = dat$description,
-        stringsAsFactors = FALSE
+               unit = dat$unit, load_state = dat$load,
+               active_state = dat$active, sub_state = dat$sub,
+               description = dat$description,
+               stringsAsFactors = FALSE
     )
 }

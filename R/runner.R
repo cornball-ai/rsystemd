@@ -8,7 +8,11 @@
 
 runner <- function() {
     run <- .runner_state$run
-    if (is.null(run)) run_system else run
+    if (is.null(run)) {
+        run_system
+    } else {
+        run
+    }
 }
 
 set_runner <- function(run = NULL) {
@@ -22,14 +26,14 @@ set_runner <- function(run = NULL) {
 run_system <- function(cmd, args) {
     if (Sys.which(cmd) == "") {
         stop_rsystemd("backend tool not found: ", cmd,
-            class = "rsystemd_missing_tool")
+                      class = "rsystemd_missing_tool")
     }
     out <- suppressWarnings(
-        system2(cmd, args, stdout = TRUE, stderr = FALSE, env = "LC_ALL=C")
+                            system2(cmd, args, stdout = TRUE, stderr = FALSE, env = "LC_ALL=C")
     )
     status <- attr(out, "status")
     list(
-        status = if (is.null(status)) 0L else as.integer(status),
-        output = as.character(out)
+         status = if (is.null(status)) 0L else as.integer(status),
+         output = as.character(out)
     )
 }
