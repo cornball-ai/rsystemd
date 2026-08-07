@@ -23,7 +23,7 @@
 #' }
 #' @export
 systemd_journal <- function(unit = NULL, priority = NULL, since = NULL,
-    until = NULL, n = 1000L) {
+                            until = NULL, n = 1000L) {
     if (!is.numeric(n) || length(n) != 1L || is.na(n) || n < 1L) {
         stop_rsystemd("n must be a single positive number")
     }
@@ -45,12 +45,10 @@ systemd_journal <- function(unit = NULL, priority = NULL, since = NULL,
         args <- c(args, "--unit", shQuote(one_string(unit, "unit")))
     }
     if (!is.null(since)) {
-        args <- c(args, paste0("--since=", shQuote(one_string(since,
-            "since"))))
+        args <- c(args, paste0("--since=", shQuote(one_string(since, "since"))))
     }
     if (!is.null(until)) {
-        args <- c(args, paste0("--until=", shQuote(one_string(until,
-            "until"))))
+        args <- c(args, paste0("--until=", shQuote(one_string(until, "until"))))
     }
     res <- runner()("journalctl", args)
     if (res$status != 0L) {
@@ -66,23 +64,22 @@ systemd_journal <- function(unit = NULL, priority = NULL, since = NULL,
 ## are converted to character.
 parse_journal_json <- function(lines) {
     lines <- lines[nzchar(lines)]
-    empty <- data.frame(
-        time = as.POSIXct(character(), tz = "UTC"),
-        priority = integer(), unit = character(), pid = integer(),
-        message = character(), stringsAsFactors = FALSE
-    )
+    empty <- data.frame(time = as.POSIXct(character(), tz = "UTC"),
+                        priority = integer(), unit = character(),
+                        pid = integer(), message = character(),
+                        stringsAsFactors = FALSE)
     if (length(lines) == 0L) {
         return(empty)
     }
     recs <- vector("list", length(lines))
     for (i in seq_along(lines)) {
         recs[[i]] <- tryCatch(
-            jsonlite::fromJSON(lines[i]),
-            error = function(e) {
-                stop_rsystemd("unparseable journal JSON (line ", i, "): ",
-                    conditionMessage(e),
-                    class = "runix_parse_error")
-            }
+                              jsonlite::fromJSON(lines[i]),
+                              error = function(e) {
+            stop_rsystemd("unparseable journal JSON (line ", i, "): ",
+                          conditionMessage(e),
+                          class = "runix_parse_error")
+        }
         )
     }
     chr1 <- function(r, k) {
@@ -102,25 +99,25 @@ parse_journal_json <- function(lines) {
         bad <- !is.na(x) & is.na(out)
         if (any(bad)) {
             stop_rsystemd("non-numeric ", what, " in journal entry ",
-                which(bad)[1L], ": ", x[which(bad)[1L]],
-                class = "runix_parse_error")
+                          which(bad)[1L], ": ", x[which(bad)[1L]],
+                          class = "runix_parse_error")
         }
         out
     }
     ts <- vapply(recs, chr1, character(1), "__REALTIME_TIMESTAMP")
     if (anyNA(ts)) {
         stop_rsystemd("journal entry ", which(is.na(ts))[1L],
-            " missing __REALTIME_TIMESTAMP",
-            class = "runix_parse_error")
+                      " missing __REALTIME_TIMESTAMP",
+                      class = "runix_parse_error")
     }
     data.frame(
-        time = as.POSIXct(as.numeric(ts) / 1e6, origin = "1970-01-01",
-            tz = "UTC"),
-        priority = int_strict(vapply(recs, chr1, character(1), "PRIORITY"),
-            "PRIORITY"),
-        unit = vapply(recs, chr1, character(1), "_SYSTEMD_UNIT"),
-        pid = int_strict(vapply(recs, chr1, character(1), "_PID"), "_PID"),
-        message = vapply(recs, chr1, character(1), "MESSAGE"),
-        stringsAsFactors = FALSE
+               time = as.POSIXct(as.numeric(ts) / 1e6, origin = "1970-01-01",
+                                 tz = "UTC"),
+               priority = int_strict(vapply(recs, chr1, character(1), "PRIORITY"),
+                                     "PRIORITY"),
+               unit = vapply(recs, chr1, character(1), "_SYSTEMD_UNIT"),
+               pid = int_strict(vapply(recs, chr1, character(1), "_PID"), "_PID"),
+               message = vapply(recs, chr1, character(1), "MESSAGE"),
+               stringsAsFactors = FALSE
     )
 }

@@ -1,3 +1,4 @@
 # tinyrox says don't edit this manually, but it can't stop you!
 
+export(systemd_journal)
 export(systemd_units)
