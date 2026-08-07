@@ -16,7 +16,6 @@ cols <- c("unit", "load_state", "active_state", "sub_state", "description")
 # --- Recorded real JSON parses to the contracted shape ---
 
 old <- rsystemd:::set_runner(fake(fx("systemctl-list-units.json")))
-on.exit(rsystemd:::set_runner(old), add = TRUE)
 df <- systemd_units()
 rsystemd:::set_runner(old)
 
