@@ -32,7 +32,7 @@ fake_systemctl <- function(show_states, effect_status = 0L,
         )
     }
     function(cmd, args) {
-        is_show <- length(args) >= 1L && args[1L] == "show"
+        is_show <- any(args == "show") # scope-aware: --user may precede
         if (is_show) {
             idx <- min(st$i, length(show_states))
             out <- render(show_states[[idx]])
@@ -150,7 +150,7 @@ expect_false(e$observed_failed)
 seen <- new.env()
 seen$effect <- FALSE
 probe <- function(cmd, args) {
-    if (!(length(args) >= 1L && args[1L] == "show")) seen$effect <- TRUE
+    if (!any(args == "show")) seen$effect <- TRUE
     fake_systemctl(list(svc("inactive", NA_character_)))(cmd, args)
 }
 old <- rsystemd:::set_runner(probe)
@@ -166,7 +166,7 @@ expect_equal(r$completion$method, "preview")
 
 seen$effect <- FALSE
 old <- rsystemd:::set_runner(probe2 <- function(cmd, args) {
-    if (!(length(args) >= 1L && args[1L] == "show")) seen$effect <- TRUE
+    if (!any(args == "show")) seen$effect <- TRUE
     fake_systemctl(list(svc("active", "AAAA")))(cmd, args)
 })
 r <- systemd_start("cups.service")
@@ -216,6 +216,50 @@ r <- systemd_enable("cups.service")
 rsystemd:::set_runner(old)
 expect_false(r$changed)
 expect_equal(r$completion$method, "noop")
+
+# --- scope regression: --user must reach BOTH observation and effect ----
+# A fake that ignored args once hid a real bug (effect was --user, observe
+# was system-scope, so correlation silently failed live). This records
+# every argv and asserts scope consistency across show AND the effect.
+
+record_argv <- function(states) {
+    calls <- new.env()
+    calls$argv <- list()
+    st <- new.env()
+    st$i <- 1L
+    st$issued <- FALSE
+    fake <- fake_systemctl(states, advance_after = 2L)
+    list(
+        env = calls,
+        fn = function(cmd, args) {
+            calls$argv[[length(calls$argv) + 1L]] <- args
+            fake(cmd, args)
+        }
+    )
+}
+
+# user scope: every systemctl invocation must carry --user
+rec <- record_argv(list(svc("active", "U1"),
+    svc("active", "U2", scm = 2000L)))
+old <- rsystemd:::set_runner(rec$fn)
+systemd_restart("u.service", scope = "user", timeout = 5)
+rsystemd:::set_runner(old)
+is_show <- vapply(rec$env$argv, function(a) any(a == "show"), logical(1))
+has_user <- vapply(rec$env$argv, function(a) any(a == "--user"), logical(1))
+expect_true(any(is_show))                       # observation happened
+expect_true(any(!is_show))                      # an effect happened
+expect_true(all(has_user))                      # --user on ALL calls
+expect_true(all(has_user[is_show]))             # ...including observation
+expect_true(all(has_user[!is_show]))            # ...and the effect
+
+# system scope: no call carries --user
+rec <- record_argv(list(svc("active", "S1"),
+    svc("active", "S2", scm = 2000L)))
+old <- rsystemd:::set_runner(rec$fn)
+systemd_restart("s.service", scope = "system", timeout = 5)
+rsystemd:::set_runner(old)
+has_user <- vapply(rec$env$argv, function(a) any(a == "--user"), logical(1))
+expect_false(any(has_user))
 
 # --- input validation ---------------------------------------------------
 
