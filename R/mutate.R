@@ -139,7 +139,6 @@ mutate_active <- function(operation, subcommand, unit, scope, dry_run,
     check_flag(dry_run, "dry_run")
     check_timeout(timeout)
 
-    cid <- runix::new_correlation_id()
     resolved <- audit_resolver()(scope)
 
     before <- observe_unit(unit, scope)
@@ -157,7 +156,7 @@ mutate_active <- function(operation, subcommand, unit, scope, dry_run,
                 invocation_before = before$invocation_id,
                 invocation_after = NA_character_),
                                      authorized_via = authz_for(operation, scope, FALSE))
-        return(audit_noneffect(result, resolved, cid, "preview", scope))
+        return(audit_noneffect(result, resolved, "preview", scope))
     }
 
     ## Pure no-op: already cleanly in the desired state, no effect issued.
@@ -172,12 +171,12 @@ mutate_active <- function(operation, subcommand, unit, scope, dry_run,
                 invocation_before = before$invocation_id,
                 invocation_after = before$invocation_id),
                                      authorized_via = authz_for(operation, scope, FALSE))
-        return(audit_noneffect(result, resolved, cid, "noop", scope))
+        return(audit_noneffect(result, resolved, "noop", scope))
     }
 
     ## Effect path: durable intent first, then issue + poll + interpret,
     ## then outcome; all under one correlation_id.
-    audit_effect(operation, unit, scope, resolved, cid, run = function() {
+    audit_effect(operation, unit, scope, resolved, run = function() {
         started <- proc.time()[["elapsed"]]
         argv <- c(scope_args(scope), subcommand, "--no-block", shQuote(unit))
         issue_effect(argv, unit, operation, scope)
@@ -348,7 +347,6 @@ mutate_unit_file <- function(operation, subcommand, unit, scope, dry_run,
     check_flag(dry_run, "dry_run")
     check_timeout(timeout)
 
-    cid <- runix::new_correlation_id()
     resolved <- audit_resolver()(scope)
 
     before <- observe_unit(unit, scope)
@@ -363,7 +361,7 @@ mutate_unit_file <- function(operation, subcommand, unit, scope, dry_run,
                 invocation_before = before$invocation_id,
                 invocation_after = NA_character_),
                                      authorized_via = authz_for(operation, scope, FALSE))
-        return(audit_noneffect(result, resolved, cid, "preview", scope))
+        return(audit_noneffect(result, resolved, "preview", scope))
     }
 
     if (!would_change) {
@@ -375,10 +373,10 @@ mutate_unit_file <- function(operation, subcommand, unit, scope, dry_run,
                 invocation_before = before$invocation_id,
                 invocation_after = before$invocation_id),
                                      authorized_via = authz_for(operation, scope, FALSE))
-        return(audit_noneffect(result, resolved, cid, "noop", scope))
+        return(audit_noneffect(result, resolved, "noop", scope))
     }
 
-    audit_effect(operation, unit, scope, resolved, cid, run = function() {
+    audit_effect(operation, unit, scope, resolved, run = function() {
         argv <- c(scope_args(scope), subcommand, shQuote(unit))
         issue_effect(argv, unit, operation, scope) # synchronous; no --no-block
         after <- observe_unit(unit, scope)
