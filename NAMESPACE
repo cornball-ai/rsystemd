@@ -1,7 +1,14 @@
 # tinyrox says don't edit this manually, but it can't stop you!
 
+export(systemd_disable)
+export(systemd_enable)
 export(systemd_journal)
+export(systemd_restart)
+export(systemd_start)
 export(systemd_state)
+export(systemd_stop)
 export(systemd_timers)
 export(systemd_unit_info)
 export(systemd_units)
+
+S3method(print,systemd_result)
