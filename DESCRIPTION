@@ -1,7 +1,7 @@
 Package: rsystemd
 Type: Package
 Title: Introspection and Managed Mutation of 'systemd' Units
-Version: 0.0.1.6
+Version: 0.0.1.7
 Date: 2026-08-08
 Authors@R: c(
     person("Troy", "Hernandez", role = c("aut", "cre"), email = "troy@cornball.ai",
@@ -11,8 +11,10 @@ Description: Structured queries of 'systemd' state (units, timers, unit
     properties, overall state, journal entries as plain data frames) plus
     managed unit mutations (start, stop, restart, enable, disable) with
     preview, idempotence, job correlation, timeout and cancellation
-    handling, service-level authorization, and audit records. Part of the
-    Runix system-administration framework.
+    handling, service-level authorization, and durable audit records (every
+    attempt persisted through the 'runix' audit sink; caller-owned by default,
+    honest about durability). Part of the Runix system-administration
+    framework.
 License: MIT + file LICENSE
 OS_type: unix
 SystemRequirements: systemd (>= 249, for systemctl JSON output)

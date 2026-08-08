@@ -139,71 +139,81 @@ mutate_active <- function(operation, subcommand, unit, scope, dry_run,
     check_flag(dry_run, "dry_run")
     check_timeout(timeout)
 
+    cid <- runix::new_correlation_id()
+    resolved <- audit_resolver()(scope)
+
     before <- observe_unit(unit, scope)
     would_issue <- !skip_fn(before)
 
     if (dry_run) {
-        return(new_systemd_result(
-                                  operation = operation, resource = unit,
-                                  changed = functional_pred(before),
-                                  state_changed = would_issue,
-                                  preview = TRUE, before = before, after = NA,
-                                  planned = list(subcommand = subcommand, scope = scope,
-                    effect_would_issue = would_issue),
-                                  completion = list(method = "preview", job_result = NA_character_,
-                    invocation_before = before$invocation_id,
-                    invocation_after = NA_character_),
-                                  authorized_via = authz_for(operation, scope, FALSE)))
+        result <- new_systemd_result(
+                                     operation = operation, resource = unit,
+                                     changed = functional_pred(before),
+                                     state_changed = would_issue,
+                                     preview = TRUE, before = before, after = NA,
+                                     planned = list(subcommand = subcommand, scope = scope,
+                effect_would_issue = would_issue),
+                                     completion = list(method = "preview", job_result = NA_character_,
+                invocation_before = before$invocation_id,
+                invocation_after = NA_character_),
+                                     authorized_via = authz_for(operation, scope, FALSE))
+        return(audit_noneffect(result, resolved, cid, "preview", scope))
     }
 
     ## Pure no-op: already cleanly in the desired state, no effect issued.
     if (!would_issue) {
-        return(new_systemd_result(
-                                  operation = operation, resource = unit, changed = FALSE,
-                                  state_changed = FALSE, preview = FALSE, before = before,
-                                  after = before,
-                                  planned = list(subcommand = subcommand, scope = scope,
-                    effect_would_issue = FALSE),
-                                  completion = list(method = "noop", job_result = NA_character_,
-                    invocation_before = before$invocation_id,
-                    invocation_after = before$invocation_id),
-                                  authorized_via = authz_for(operation, scope, FALSE)))
+        result <- new_systemd_result(
+                                     operation = operation, resource = unit, changed = FALSE,
+                                     state_changed = FALSE, preview = FALSE, before = before,
+                                     after = before,
+                                     planned = list(subcommand = subcommand, scope = scope,
+                effect_would_issue = FALSE),
+                                     completion = list(method = "noop", job_result = NA_character_,
+                invocation_before = before$invocation_id,
+                invocation_after = before$invocation_id),
+                                     authorized_via = authz_for(operation, scope, FALSE))
+        return(audit_noneffect(result, resolved, cid, "noop", scope))
     }
 
-    started <- proc.time()[["elapsed"]]
-    argv <- c(scope_args(scope), subcommand, "--no-block", shQuote(unit))
-    issue_effect(argv, unit, operation, scope)
+    ## Effect path: durable intent first, then issue + poll + interpret,
+    ## then outcome; all under one correlation_id.
+    audit_effect(operation, unit, scope, resolved, cid, run = function() {
+        started <- proc.time()[["elapsed"]]
+        argv <- c(scope_args(scope), subcommand, "--no-block", shQuote(unit))
+        issue_effect(argv, unit, operation, scope)
 
-    poll <- poll_until(unit, function(after) done_fn(after, before), timeout,
-                       scope)
-    elapsed <- proc.time()[["elapsed"]] - started
-    after <- poll$after
+        poll <- poll_until(unit, function(after) done_fn(after, before),
+                           timeout, scope)
+        elapsed <- proc.time()[["elapsed"]] - started
+        after <- poll$after
 
-    if (identical(poll$status, "cancelled")) {
-        stop_wait("runix_cancelled", operation, unit, elapsed, after)
-    }
-    if (identical(poll$status, "timeout")) {
-        ## restart whose invocation never advanced = submitted, not a lie.
-        if (require_invocation_change &&
-            identical(after$invocation_id, before$invocation_id)) {
-            return(new_systemd_result(
-                                      operation = operation, resource = unit, changed = NA,
-                                      state_changed = NA, preview = FALSE, before = before,
-                                      after = after,
-                                      planned = list(subcommand = subcommand, scope = scope),
-                                      completion = list(method = "submitted_unconfirmed",
-                        job_result = NA_character_,
-                        invocation_before = before$invocation_id,
-                        invocation_after = after$invocation_id),
-                                      authorized_via = authz_for(operation, scope, TRUE),
-                                      outcome = "submitted"))
+        if (identical(poll$status, "cancelled")) {
+            stop_wait("runix_cancelled", operation, unit, elapsed, after)
         }
-        stop_wait("runix_timeout", operation, unit, elapsed, after)
-    }
+        if (identical(poll$status, "timeout")) {
+            ## restart whose invocation never advanced = submitted, not a lie.
+            if (require_invocation_change &&
+                 identical(after$invocation_id, before$invocation_id)) {
+                return(new_systemd_result(
+                        operation = operation, resource = unit, changed = NA,
+                        state_changed = NA, preview = FALSE, before = before,
+                        after = after,
+                        planned = list(subcommand = subcommand, scope = scope),
+                        completion = list(method = "submitted_unconfirmed",
+                            job_result = NA_character_,
+                            invocation_before = before$invocation_id,
+                            invocation_after = after$invocation_id),
+                        authorized_via = authz_for(operation, scope, TRUE),
+                        outcome = "submitted"))
+            }
+            stop_wait("runix_timeout", operation, unit, elapsed, after)
+        }
 
-    ## Settled: let the verb interpret success vs failure. An effect was
-    ## issued, so the authorization descriptor reflects that.
-    interpret(before, after, operation, unit, authz_for(operation, scope, TRUE))
+        ## Settled: let the verb interpret success vs failure. An effect was
+        ## issued, so the authorization descriptor reflects that.
+        interpret(before, after, operation, unit,
+                  authz_for(operation, scope, TRUE))
+    })
 }
 
 #' Start a systemd unit
@@ -338,52 +348,61 @@ mutate_unit_file <- function(operation, subcommand, unit, scope, dry_run,
     check_flag(dry_run, "dry_run")
     check_timeout(timeout)
 
+    cid <- runix::new_correlation_id()
+    resolved <- audit_resolver()(scope)
+
     before <- observe_unit(unit, scope)
     would_change <- !(before$unit_file_state %in% desired_set)
 
     if (dry_run) {
-        return(new_systemd_result(operation, unit, would_change,
-                                  would_change, TRUE, before, NA,
-                                  planned = list(subcommand = subcommand, scope = scope,
-                    already_in_desired_state = !would_change),
-                                  completion = list(method = "preview", job_result = NA_character_,
-                    invocation_before = before$invocation_id,
-                    invocation_after = NA_character_),
-                                  authorized_via = authz_for(operation, scope, FALSE)))
+        result <- new_systemd_result(operation, unit, would_change,
+                                     would_change, TRUE, before, NA,
+                                     planned = list(subcommand = subcommand, scope = scope,
+                already_in_desired_state = !would_change),
+                                     completion = list(method = "preview", job_result = NA_character_,
+                invocation_before = before$invocation_id,
+                invocation_after = NA_character_),
+                                     authorized_via = authz_for(operation, scope, FALSE))
+        return(audit_noneffect(result, resolved, cid, "preview", scope))
     }
 
     if (!would_change) {
-        return(new_systemd_result(operation, unit, FALSE, FALSE, FALSE,
-                                  before, before,
-                                  planned = list(subcommand = subcommand, scope = scope,
-                    already_in_desired_state = TRUE),
-                                  completion = list(method = "noop", job_result = NA_character_,
-                    invocation_before = before$invocation_id,
-                    invocation_after = before$invocation_id),
-                                  authorized_via = authz_for(operation, scope, FALSE)))
+        result <- new_systemd_result(operation, unit, FALSE, FALSE, FALSE,
+                                     before, before,
+                                     planned = list(subcommand = subcommand, scope = scope,
+                already_in_desired_state = TRUE),
+                                     completion = list(method = "noop", job_result = NA_character_,
+                invocation_before = before$invocation_id,
+                invocation_after = before$invocation_id),
+                                     authorized_via = authz_for(operation, scope, FALSE))
+        return(audit_noneffect(result, resolved, cid, "noop", scope))
     }
 
-    argv <- c(scope_args(scope), subcommand, shQuote(unit))
-    issue_effect(argv, unit, operation, scope) # synchronous; no --no-block
-    after <- observe_unit(unit, scope)
-    if (!(after$unit_file_state %in% desired_set)) {
-        stop_mutation(
-                      paste0(operation, " did not take effect for ", unit,
-                             " (unit_file_state=", after$unit_file_state, ")"),
-                      "runix_operation_failed",
-                      data = list(resource = unit, observed = after,
-                                  observed_failed = FALSE, observed_reason = NA_character_))
-    }
-    fields <- c("active_state", "sub_state", "unit_file_state", "main_pid",
-                "invocation_id", "state_change_monotonic")
-    new_systemd_result(operation, unit, changed = TRUE,
-                       state_changed = !identical(before[fields], after[fields]),
-                       preview = FALSE, before = before, after = after,
-                       planned = list(already_in_desired_state = FALSE),
-                       completion = list(method = "synchronous", job_result = "done",
-            invocation_before = before$invocation_id,
-            invocation_after = after$invocation_id),
-                       authorized_via = authz_for(operation, scope, TRUE))
+    audit_effect(operation, unit, scope, resolved, cid, run = function() {
+        argv <- c(scope_args(scope), subcommand, shQuote(unit))
+        issue_effect(argv, unit, operation, scope) # synchronous; no --no-block
+        after <- observe_unit(unit, scope)
+        if (!(after$unit_file_state %in% desired_set)) {
+            stop_mutation(
+                          paste0(operation, " did not take effect for ", unit,
+                                 " (unit_file_state=", after$unit_file_state, ")"),
+                          "runix_operation_failed",
+                          data = list(resource = unit, observed = after,
+                                      observed_failed = FALSE,
+                                      observed_reason = NA_character_))
+        }
+        fields <- c("active_state", "sub_state", "unit_file_state", "main_pid",
+                    "invocation_id", "state_change_monotonic")
+        new_systemd_result(operation, unit, changed = TRUE,
+                           state_changed = !identical(before[fields], after[fields]),
+                           preview = FALSE, before = before, after = after,
+                           planned = list(already_in_desired_state = FALSE),
+                           completion = list(method = "synchronous",
+                job_result = "done",
+                invocation_before = before$invocation_id,
+                invocation_after = after$invocation_id),
+                           authorized_via = authz_for(operation, scope, TRUE))
+    })
 }
 
 #' Enable a systemd unit
