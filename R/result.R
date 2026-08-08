@@ -1,28 +1,18 @@
 ## Constructor for the mutation result object, per the Phase 2 contract
-## (cornball-ai/runix docs/phase2-mutation-contract.md). S3 class
-## c("systemd_result", "runix_result"); a plain list, data-in/data-out.
+## (cornball-ai/runix docs/phase2-mutation-contract.md). The neutral shell and
+## S3 class c("systemd_result", "runix_result") come from runix::new_runix_result;
+## this wrapper adds the systemd-specific audit record. A plain list, data-in/
+## data-out.
 
 new_systemd_result <- function(operation, resource, changed, state_changed,
                                preview, before, after, planned, completion,
                                authorized_via = "unknown", outcome = "ok") {
-    structure(
-              list(
-                   operation = operation,
-                   resource = resource,
-                   changed = changed,
-                   state_changed = state_changed,
-                   preview = preview,
-                   before = before,
-                   after = after,
-                   planned = planned,
-                   completion = completion,
-                   audit = new_audit(operation, resource, preview, changed,
-                                     state_changed, completion,
-                                     authorized_via = authorized_via,
-                                     outcome = outcome)
-        ),
-              class = c("systemd_result", "runix_result")
-    )
+    audit <- new_audit(operation, resource, preview, changed, state_changed,
+                       completion, authorized_via = authorized_via,
+                       outcome = outcome)
+    runix::new_runix_result(operation, resource, changed, state_changed,
+                            preview, before, after, planned, completion,
+                            audit, subclass = "systemd_result")
 }
 
 ## The audit record. `actor` is the caller's uid resolved once; failures
