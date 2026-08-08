@@ -5,27 +5,42 @@
 #' \code{load_state "not-found"}, it is not an error.
 #'
 #' @param unit A single unit name.
+#' @param scope \code{"system"} (default) or \code{"user"} — which systemd
+#'   manager to query.
 #' @return A named list: \code{unit}, \code{description}, \code{load_state},
 #'   \code{active_state}, \code{sub_state}, \code{unit_file_state},
 #'   \code{fragment_path}, \code{active_enter_time} (POSIXct UTC, NA when
 #'   never active), \code{main_pid} (integer, NA when none),
 #'   \code{memory_current} (numeric bytes, NA when not set),
-#'   \code{restarts} (integer).
+#'   \code{restarts} (integer), \code{invocation_id} (character, the
+#'   systemd per-(re)start id, NA when the unit is not running), and
+#'   \code{state_change_monotonic} (numeric microseconds since boot,
+#'   monotonic, NA when unset). The last two are the correlation markers
+#'   Phase 2 mutations use to confirm a fresh job ran.
 #' @examples
 #' \dontrun{
 #' info <- systemd_unit_info("ssh.service")
 #' info$active_state
 #' }
 #' @export
-systemd_unit_info <- function(unit) {
+systemd_unit_info <- function(unit, scope = "system") {
     if (!is.character(unit) || length(unit) != 1L || is.na(unit) ||
         !nzchar(unit)) {
         stop_rsystemd("unit must be a single unit name")
     }
+    if (!identical(scope, "system") && !identical(scope, "user")) {
+        stop_rsystemd("scope must be \"system\" or \"user\"")
+    }
     props <- c("Id", "Description", "LoadState", "ActiveState", "SubState",
                "UnitFileState", "FragmentPath", "ActiveEnterTimestamp",
-               "MainPID", "MemoryCurrent", "NRestarts")
-    res <- runner()("systemctl", c("show", shQuote(unit),
+               "MainPID", "MemoryCurrent", "NRestarts", "InvocationID",
+               "StateChangeTimestampMonotonic")
+    if (identical(scope, "user")) {
+        user_flag <- "--user"
+    } else {
+        user_flag <- NULL
+    }
+    res <- runner()("systemctl", c(user_flag, "show", shQuote(unit),
                                    paste0("--property=", paste(props, collapse = ",")), "--no-pager"))
     if (res$status != 0L) {
         stop_rsystemd("systemctl show failed with status ", res$status)
@@ -90,6 +105,23 @@ parse_unit_show <- function(lines) {
         }
         out
     }
+    inv <- val("InvocationID")
+    if (is.na(inv) || !nzchar(inv)) {
+        invocation_id <- NA_character_
+    } else {
+        invocation_id <- inv
+    }
+    scm <- val("StateChangeTimestampMonotonic")
+    state_change_monotonic <- if (is.na(scm) || !nzchar(scm)) {
+        NA_real_
+    } else {
+        out <- suppressWarnings(as.numeric(scm))
+        if (is.na(out)) {
+            stop_rsystemd("non-numeric StateChangeTimestampMonotonic: ", scm,
+                          class = "runix_parse_error")
+        }
+        out
+    }
     list(
          unit = kv[["Id"]],
          description = val("Description"),
@@ -101,6 +133,8 @@ parse_unit_show <- function(lines) {
          active_enter_time = active_enter_time,
          main_pid = main_pid,
          memory_current = memory_current,
-         restarts = int_strict(val("NRestarts"), "NRestarts")
+         restarts = int_strict(val("NRestarts"), "NRestarts"),
+         invocation_id = invocation_id,
+         state_change_monotonic = state_change_monotonic
     )
 }
