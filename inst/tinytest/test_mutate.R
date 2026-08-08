@@ -261,6 +261,48 @@ rsystemd:::set_runner(old)
 has_user <- vapply(rec$env$argv, function(a) any(a == "--user"), logical(1))
 expect_false(any(has_user))
 
+# --- audit authorized_via reflects what actually authorized -------------
+# system-scope effect -> the polkit action; preview/noop -> not_required;
+# user-scope effect -> not_required (caller's own manager). Never hardcoded.
+
+old <- rsystemd:::set_runner(fake_systemctl(
+    list(svc("active", "AAAA"), svc("active", "BBBB", scm = 2000L)),
+    advance_after = 2L))
+r <- systemd_restart("cups.service", timeout = 5)
+rsystemd:::set_runner(old)
+expect_equal(r$audit$authorized_via,
+    "polkit:org.freedesktop.systemd1.manage-units")
+
+old <- rsystemd:::set_runner(fake_systemctl(
+    list(svc("active", "AAAA", ufs = "disabled"),
+         svc("active", "AAAA", ufs = "enabled")),
+    advance_after = 2L))
+r <- systemd_enable("cups.service")
+rsystemd:::set_runner(old)
+expect_equal(r$audit$authorized_via,
+    "polkit:org.freedesktop.systemd1.manage-unit-files")
+
+# preview: no effect issued -> not_required
+old <- rsystemd:::set_runner(fake_systemctl(list(svc("inactive",
+    NA_character_))))
+r <- systemd_start("cups.service", dry_run = TRUE)
+rsystemd:::set_runner(old)
+expect_equal(r$audit$authorized_via, "not_required")
+
+# noop: already active -> not_required
+old <- rsystemd:::set_runner(fake_systemctl(list(svc("active", "AAAA"))))
+r <- systemd_start("cups.service")
+rsystemd:::set_runner(old)
+expect_equal(r$audit$authorized_via, "not_required")
+
+# user scope: caller's own manager, not a system polkit action
+old <- rsystemd:::set_runner(fake_systemctl(
+    list(svc("active", "AAAA"), svc("active", "BBBB", scm = 2000L)),
+    advance_after = 2L))
+r <- systemd_restart("cups.service", scope = "user", timeout = 5)
+rsystemd:::set_runner(old)
+expect_equal(r$audit$authorized_via, "not_required")
+
 # --- input validation ---------------------------------------------------
 
 expect_error(systemd_start(c("a", "b")))

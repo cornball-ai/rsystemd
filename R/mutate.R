@@ -152,7 +152,8 @@ mutate_active <- function(operation, subcommand, unit, scope, dry_run,
                     effect_would_issue = would_issue),
                                   completion = list(method = "preview", job_result = NA_character_,
                     invocation_before = before$invocation_id,
-                    invocation_after = NA_character_)))
+                    invocation_after = NA_character_),
+                                  authorized_via = authz_for(operation, scope, FALSE)))
     }
 
     ## Pure no-op: already cleanly in the desired state, no effect issued.
@@ -165,7 +166,8 @@ mutate_active <- function(operation, subcommand, unit, scope, dry_run,
                     effect_would_issue = FALSE),
                                   completion = list(method = "noop", job_result = NA_character_,
                     invocation_before = before$invocation_id,
-                    invocation_after = before$invocation_id)))
+                    invocation_after = before$invocation_id),
+                                  authorized_via = authz_for(operation, scope, FALSE)))
     }
 
     started <- proc.time()[["elapsed"]]
@@ -193,13 +195,15 @@ mutate_active <- function(operation, subcommand, unit, scope, dry_run,
                         job_result = NA_character_,
                         invocation_before = before$invocation_id,
                         invocation_after = after$invocation_id),
+                                      authorized_via = authz_for(operation, scope, TRUE),
                                       outcome = "submitted"))
         }
         stop_wait("runix_timeout", operation, unit, elapsed, after)
     }
 
-    ## Settled: let the verb interpret success vs failure.
-    interpret(before, after, operation, unit)
+    ## Settled: let the verb interpret success vs failure. An effect was
+    ## issued, so the authorization descriptor reflects that.
+    interpret(before, after, operation, unit, authz_for(operation, scope, TRUE))
 }
 
 #' Start a systemd unit
@@ -221,7 +225,7 @@ systemd_start <- function(unit, scope = "system", dry_run = FALSE,
         after$active_state %in% c("active", "failed")
     },
                   require_invocation_change = FALSE,
-                  interpret = function(before, after, operation, unit) {
+                  interpret = function(before, after, operation, unit, az) {
         if (identical(after$active_state, "failed")) {
             stop_mutation(paste0(unit, " failed to start"),
                           "runix_operation_failed",
@@ -229,7 +233,7 @@ systemd_start <- function(unit, scope = "system", dry_run = FALSE,
                                       observed_failed = FALSE,
                                       observed_reason = NA_character_))
         }
-        finish_result(operation, unit, before, after, "state_transition")
+        finish_result(operation, unit, before, after, "state_transition", az)
     })
 }
 
@@ -248,8 +252,8 @@ systemd_stop <- function(unit, scope = "system", dry_run = FALSE,
         after$active_state %in% c("inactive", "failed")
     },
                   require_invocation_change = FALSE,
-                  interpret = function(before, after, operation, unit) {
-        finish_result(operation, unit, before, after, "state_transition")
+                  interpret = function(before, after, operation, unit, az) {
+        finish_result(operation, unit, before, after, "state_transition", az)
     })
 }
 
@@ -271,7 +275,7 @@ systemd_restart <- function(unit, scope = "system", dry_run = FALSE,
         after$active_state %in% c("active", "failed", "inactive")
     },
                   require_invocation_change = TRUE,
-                  interpret = function(before, after, operation, unit) {
+                  interpret = function(before, after, operation, unit, az) {
         if (identical(after$active_state, "failed")) {
             stop_mutation(paste0(unit, " failed to restart"),
                           "runix_operation_failed",
@@ -279,7 +283,7 @@ systemd_restart <- function(unit, scope = "system", dry_run = FALSE,
                                       observed_failed = FALSE,
                                       observed_reason = NA_character_))
         }
-        finish_result(operation, unit, before, after, "invocation_id")
+        finish_result(operation, unit, before, after, "invocation_id", az)
     })
 }
 
@@ -290,7 +294,8 @@ invocation_changed <- function(after, before) {
 
 ## Build the success result for a settled active-state mutation. `changed`
 ## is the functional effect; state_changed is any observed field difference.
-finish_result <- function(operation, unit, before, after, method) {
+finish_result <- function(operation, unit, before, after, method,
+                          authorized_via) {
     fields <- c("active_state", "sub_state", "unit_file_state", "main_pid",
                 "invocation_id", "state_change_monotonic")
     state_changed <- !identical(before[fields], after[fields])
@@ -307,7 +312,8 @@ finish_result <- function(operation, unit, before, after, method) {
                 "done"
             },
             invocation_before = before$invocation_id,
-            invocation_after = after$invocation_id))
+            invocation_after = after$invocation_id),
+                       authorized_via = authorized_via)
 }
 
 ## Verb-specific functional-change semantics (distinct from state_changed).
@@ -342,7 +348,8 @@ mutate_unit_file <- function(operation, subcommand, unit, scope, dry_run,
                     already_in_desired_state = !would_change),
                                   completion = list(method = "preview", job_result = NA_character_,
                     invocation_before = before$invocation_id,
-                    invocation_after = NA_character_)))
+                    invocation_after = NA_character_),
+                                  authorized_via = authz_for(operation, scope, FALSE)))
     }
 
     if (!would_change) {
@@ -352,7 +359,8 @@ mutate_unit_file <- function(operation, subcommand, unit, scope, dry_run,
                     already_in_desired_state = TRUE),
                                   completion = list(method = "noop", job_result = NA_character_,
                     invocation_before = before$invocation_id,
-                    invocation_after = before$invocation_id)))
+                    invocation_after = before$invocation_id),
+                                  authorized_via = authz_for(operation, scope, FALSE)))
     }
 
     argv <- c(scope_args(scope), subcommand, shQuote(unit))
@@ -374,7 +382,8 @@ mutate_unit_file <- function(operation, subcommand, unit, scope, dry_run,
                        planned = list(already_in_desired_state = FALSE),
                        completion = list(method = "synchronous", job_result = "done",
             invocation_before = before$invocation_id,
-            invocation_after = after$invocation_id))
+            invocation_after = after$invocation_id),
+                       authorized_via = authz_for(operation, scope, TRUE))
 }
 
 #' Enable a systemd unit
