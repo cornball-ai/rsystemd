@@ -1,3 +1,10 @@
+# rsystemd 0.0.1.8
+
+Adopt the runix receipt-based sink interface (`open_intent`/`write_outcome`):
+the correlation id is now minted by the sink rather than by the verb, so the
+same code path works with a future remote broker sink. Internal refactor, no
+change to observable mutation or audit behavior.
+
 # rsystemd 0.0.1.7
 
 ## Behavior change: mutations now emit durable audit records

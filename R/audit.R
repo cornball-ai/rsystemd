@@ -100,21 +100,21 @@ outcome_from_condition <- function(cond) {
 }
 
 ## Emit the single record for a non-effect path (preview / no-op) and stamp
-## the result.
-audit_noneffect <- function(result, resolved, cid, phase, scope) {
+## the result. The sink mints the correlation id; we read it off the receipt.
+audit_noneffect <- function(result, resolved, phase, scope) {
     rec <- audit_record_from_result(result, effect_issued = FALSE,
                                     resolved$audit_scope, scope)
-    e <- runix::audit_emit(resolved$sink, rec, phase = phase,
-                           correlation_id = cid)
-    stamp_result(result, cid, resolved$audit_scope, isTRUE(e$persisted))
+    r <- resolved$sink$emit(rec, phase)
+    stamp_result(result, r$correlation_id, resolved$audit_scope,
+                 isTRUE(r$persisted))
 }
 
 ## Run the effect section under the two-phase discipline: durable intent
-## before the effect is issued, outcome after, one correlation_id, typed
-## failures recorded richly and re-raised with the id. `run` is the effect
-## thunk (issue + poll + interpret) returning a systemd_result or raising a
-## typed condition.
-audit_effect <- function(operation, unit, scope, resolved, cid, run) {
+## before the effect is issued, outcome after, one correlation_id (minted by
+## the sink), typed failures recorded richly and re-raised with the id. `run`
+## is the effect thunk (issue + poll + interpret) returning a systemd_result
+## or raising a typed condition.
+audit_effect <- function(operation, unit, scope, resolved, run) {
     tp <- runix::audit_two_phase(
                                  resolved$sink,
                                  intent = intent_record(operation, unit, scope, resolved$audit_scope),
@@ -126,7 +126,7 @@ audit_effect <- function(operation, unit, scope, resolved, cid, run) {
                                  on_error = function(cond, .cid) {
         audit_record_from_condition(cond, operation, unit, scope,
                                     resolved$audit_scope)
-    },
-                                 id_fn = function() cid)
-    stamp_result(tp$result, cid, resolved$audit_scope, tp$audit_persisted)
+    })
+    stamp_result(tp$result, tp$correlation_id, resolved$audit_scope,
+                 tp$audit_persisted)
 }
