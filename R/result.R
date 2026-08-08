@@ -7,9 +7,9 @@
 new_systemd_result <- function(operation, resource, changed, state_changed,
                                preview, before, after, planned, completion,
                                authorized_via = "unknown", outcome = "ok") {
-    audit <- new_audit(operation, resource, preview, changed, state_changed,
-                       completion, authorized_via = authorized_via,
-                       outcome = outcome)
+    audit <- new_audit(operation, resource, preview, changed,
+                       state_changed, completion,
+                       authorized_via = authorized_via, outcome = outcome)
     runix::new_runix_result(operation, resource, changed, state_changed,
                             preview, before, after, planned, completion,
                             audit, subclass = "systemd_result")

@@ -2,7 +2,7 @@
 ## runix::runix_abort() so rsystemd_error inherits runix_error and callers can
 ## catch either the package class or the framework class.
 stop_rsystemd <- function(..., class = character(), call. = sys.call(-1)) {
-    cl <- call.  # force the default in this frame so the call is the caller's
+    cl <- call. # force the default in this frame so the call is the caller's
     runix::runix_abort(paste0(...), subclass = c(class, "rsystemd_error"),
                        call = cl)
 }

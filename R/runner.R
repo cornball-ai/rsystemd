@@ -19,8 +19,8 @@
 ## (interruptible by SIGINT); tests replace it to simulate cancellation (raise
 ## an interrupt-classed condition) or to run instantly.
 .rsystemd_runner <- runix::new_runner(
-    default_env = c("LC_ALL=C", "TZ=UTC"),
-    missing_tool_subclass = c("rsystemd_missing_tool", "rsystemd_error"))
+                                      default_env = c("LC_ALL=C", "TZ=UTC"),
+                                      missing_tool_subclass = c("rsystemd_missing_tool", "rsystemd_error"))
 
 runner <- .rsystemd_runner$runner
 set_runner <- .rsystemd_runner$set_runner
