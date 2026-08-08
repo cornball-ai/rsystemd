@@ -1,0 +1,67 @@
+## Constructor for the mutation result object, per the Phase 2 contract
+## (cornball-ai/runix docs/phase2-mutation-contract.md). S3 class
+## c("systemd_result", "runix_result"); a plain list, data-in/data-out.
+
+new_systemd_result <- function(operation, resource, changed, state_changed,
+                               preview, before, after, planned, completion,
+                               outcome = "ok") {
+    structure(
+              list(
+                   operation = operation,
+                   resource = resource,
+                   changed = changed,
+                   state_changed = state_changed,
+                   preview = preview,
+                   before = before,
+                   after = after,
+                   planned = planned,
+                   completion = completion,
+                   audit = new_audit(operation, resource, preview, changed,
+                                     state_changed, completion, outcome = outcome)
+        ),
+              class = c("systemd_result", "runix_result")
+    )
+}
+
+## The audit record. `actor` is the caller's uid resolved once; failures
+## build their own audit via this same helper with the matching outcome.
+new_audit <- function(operation, resource, preview, changed, state_changed,
+                      completion, outcome) {
+    list(operation = operation, resource = resource, preview = preview,
+         changed = changed, state_changed = state_changed,
+         actor = actor_id(),
+         authorized_via = "polkit:org.freedesktop.systemd1",
+         completion_method = completion$method,
+         job_result = completion$job_result, time = current_time(),
+         outcome = outcome)
+}
+
+## Caller identity for the audit trail: numeric uid and login name.
+actor_id <- function() {
+    uid <- tryCatch(as.integer(system2("id", "-u", stdout = TRUE,
+                                       stderr = FALSE)[1L]), error = function(e) NA_integer_)
+    name <- tryCatch(Sys.info()[["user"]], error = function(e) NA_character_)
+    paste0(if (is.na(name)) "?" else name, "(", uid, ")")
+}
+
+## Wall-clock stamp for the audit record only (never for poll timing —
+## that uses systemd's monotonic marker). Isolated so tests can see it.
+current_time <- function() {
+    t <- Sys.time()
+    attr(t, "tzone") <- "UTC"
+    t
+}
+
+#' @export
+print.systemd_result <- function(x, ...) {
+    verb <- sub("^systemd\\.", "", x$operation)
+    if (x$preview) {
+        tag <- " [preview]"
+    } else {
+        tag <- ""
+    }
+    cat(sprintf("%s %s%s: changed=%s state_changed=%s (%s)\n", verb,
+                x$resource, tag, x$changed, x$state_changed,
+                x$completion$method))
+    invisible(x)
+}

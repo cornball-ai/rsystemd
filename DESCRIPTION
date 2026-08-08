@@ -1,16 +1,18 @@
 Package: rsystemd
 Type: Package
-Title: Read-Only Introspection of 'systemd' Units and the Journal
-Version: 0.0.1.3
+Title: Introspection and Managed Mutation of 'systemd' Units
+Version: 0.0.1.4
 Date: 2026-08-07
 Authors@R: c(
     person("Troy", "Hernandez", role = c("aut", "cre"), email = "troy@cornball.ai",
            comment = c(ORCID = "0009-0005-4248-604X")),
     person("cornball.ai", role = "cph"))
-Description: Structured, read-only queries of 'systemd' state: units, timers,
-    unit properties, overall system state, and journal entries, returned as
-    plain data frames. Part of the Runix system-administration framework;
-    mutation APIs arrive in a later phase.
+Description: Structured queries of 'systemd' state (units, timers, unit
+    properties, overall state, journal entries as plain data frames) plus
+    managed unit mutations (start, stop, restart, enable, disable) with
+    preview, idempotence, job correlation, timeout and cancellation
+    handling, service-level authorization, and audit records. Part of the
+    Runix system-administration framework.
 License: MIT + file LICENSE
 OS_type: unix
 SystemRequirements: systemd (>= 249, for systemctl JSON output)
