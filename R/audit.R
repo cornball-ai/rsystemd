@@ -66,15 +66,19 @@ audit_record_from_result <- function(result, effect_issued, audit_scope,
 ## post-state and elapsed carried on the condition are preserved.
 audit_record_from_condition <- function(cond, operation, unit, scope,
                                         audit_scope) {
-    resource <- if (is.null(cond$resource)) unit else cond$resource
+    if (is.null(cond$resource)) {
+        resource <- unit
+    } else {
+        resource <- cond$resource
+    }
     list(operation = operation, resource = resource, scope = scope,
          preview = FALSE, effect_issued = TRUE, actor = actor_id(),
          observed = cond$observed,
          observed_failed = if (is.null(cond$observed_failed)) {
-             NA
-         } else {
-             cond$observed_failed
-         },
+            NA
+        } else {
+            cond$observed_failed
+        },
          elapsed = cond$elapsed, audit_scope = audit_scope,
          outcome = outcome_from_condition(cond))
 }
@@ -113,17 +117,16 @@ audit_noneffect <- function(result, resolved, cid, phase, scope) {
 audit_effect <- function(operation, unit, scope, resolved, cid, run) {
     tp <- runix::audit_two_phase(
                                  resolved$sink,
-                                 intent = intent_record(operation, unit, scope,
-                                                        resolved$audit_scope),
+                                 intent = intent_record(operation, unit, scope, resolved$audit_scope),
                                  effect = function(.cid) run(),
                                  outcome = function(res) {
-                                     audit_record_from_result(res, effect_issued = TRUE,
-                                                              resolved$audit_scope, scope)
-                                 },
+        audit_record_from_result(res, effect_issued = TRUE,
+                                 resolved$audit_scope, scope)
+    },
                                  on_error = function(cond, .cid) {
-                                     audit_record_from_condition(cond, operation, unit, scope,
-                                                                 resolved$audit_scope)
-                                 },
+        audit_record_from_condition(cond, operation, unit, scope,
+                                    resolved$audit_scope)
+    },
                                  id_fn = function() cid)
     stamp_result(tp$result, cid, resolved$audit_scope, tp$audit_persisted)
 }

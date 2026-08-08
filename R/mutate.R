@@ -152,10 +152,10 @@ mutate_active <- function(operation, subcommand, unit, scope, dry_run,
                                      state_changed = would_issue,
                                      preview = TRUE, before = before, after = NA,
                                      planned = list(subcommand = subcommand, scope = scope,
-                    effect_would_issue = would_issue),
+                effect_would_issue = would_issue),
                                      completion = list(method = "preview", job_result = NA_character_,
-                    invocation_before = before$invocation_id,
-                    invocation_after = NA_character_),
+                invocation_before = before$invocation_id,
+                invocation_after = NA_character_),
                                      authorized_via = authz_for(operation, scope, FALSE))
         return(audit_noneffect(result, resolved, cid, "preview", scope))
     }
@@ -167,10 +167,10 @@ mutate_active <- function(operation, subcommand, unit, scope, dry_run,
                                      state_changed = FALSE, preview = FALSE, before = before,
                                      after = before,
                                      planned = list(subcommand = subcommand, scope = scope,
-                    effect_would_issue = FALSE),
+                effect_would_issue = FALSE),
                                      completion = list(method = "noop", job_result = NA_character_,
-                    invocation_before = before$invocation_id,
-                    invocation_after = before$invocation_id),
+                invocation_before = before$invocation_id,
+                invocation_after = before$invocation_id),
                                      authorized_via = authz_for(operation, scope, FALSE))
         return(audit_noneffect(result, resolved, cid, "noop", scope))
     }
@@ -193,18 +193,18 @@ mutate_active <- function(operation, subcommand, unit, scope, dry_run,
         if (identical(poll$status, "timeout")) {
             ## restart whose invocation never advanced = submitted, not a lie.
             if (require_invocation_change &&
-                identical(after$invocation_id, before$invocation_id)) {
+                 identical(after$invocation_id, before$invocation_id)) {
                 return(new_systemd_result(
-                                          operation = operation, resource = unit, changed = NA,
-                                          state_changed = NA, preview = FALSE, before = before,
-                                          after = after,
-                                          planned = list(subcommand = subcommand, scope = scope),
-                                          completion = list(method = "submitted_unconfirmed",
-                        job_result = NA_character_,
-                        invocation_before = before$invocation_id,
-                        invocation_after = after$invocation_id),
-                                          authorized_via = authz_for(operation, scope, TRUE),
-                                          outcome = "submitted"))
+                        operation = operation, resource = unit, changed = NA,
+                        state_changed = NA, preview = FALSE, before = before,
+                        after = after,
+                        planned = list(subcommand = subcommand, scope = scope),
+                        completion = list(method = "submitted_unconfirmed",
+                            job_result = NA_character_,
+                            invocation_before = before$invocation_id,
+                            invocation_after = after$invocation_id),
+                        authorized_via = authz_for(operation, scope, TRUE),
+                        outcome = "submitted"))
             }
             stop_wait("runix_timeout", operation, unit, elapsed, after)
         }
@@ -358,10 +358,10 @@ mutate_unit_file <- function(operation, subcommand, unit, scope, dry_run,
         result <- new_systemd_result(operation, unit, would_change,
                                      would_change, TRUE, before, NA,
                                      planned = list(subcommand = subcommand, scope = scope,
-                    already_in_desired_state = !would_change),
+                already_in_desired_state = !would_change),
                                      completion = list(method = "preview", job_result = NA_character_,
-                    invocation_before = before$invocation_id,
-                    invocation_after = NA_character_),
+                invocation_before = before$invocation_id,
+                invocation_after = NA_character_),
                                      authorized_via = authz_for(operation, scope, FALSE))
         return(audit_noneffect(result, resolved, cid, "preview", scope))
     }
@@ -370,10 +370,10 @@ mutate_unit_file <- function(operation, subcommand, unit, scope, dry_run,
         result <- new_systemd_result(operation, unit, FALSE, FALSE, FALSE,
                                      before, before,
                                      planned = list(subcommand = subcommand, scope = scope,
-                    already_in_desired_state = TRUE),
+                already_in_desired_state = TRUE),
                                      completion = list(method = "noop", job_result = NA_character_,
-                    invocation_before = before$invocation_id,
-                    invocation_after = before$invocation_id),
+                invocation_before = before$invocation_id,
+                invocation_after = before$invocation_id),
                                      authorized_via = authz_for(operation, scope, FALSE))
         return(audit_noneffect(result, resolved, cid, "noop", scope))
     }
