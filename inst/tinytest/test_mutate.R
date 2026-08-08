@@ -4,6 +4,25 @@
 
 options(rsystemd.poll_interval = 0) # no real sleeping between polls
 
+# Route all mutation audit to an in-memory sink so the suite stays offline
+# (nothing touches the real XDG/system sink). Reset at the end of the file.
+.audit_mem <- runix::memory_audit_sink()
+rsystemd:::set_audit_resolver(function(scope) {
+    list(sink = .audit_mem,
+        audit_scope = if (identical(scope, "user")) "user" else "caller",
+        system_durable_audit = FALSE)
+})
+
+# A fresh in-memory sink for a single assertion block; restores the shared
+# resolver afterward. `fail_on(record)` simulates a persistence failure.
+with_fresh_sink <- function(fail_on = NULL, audit_scope = "caller") {
+    s <- runix::memory_audit_sink(fail_on = fail_on)
+    old <- rsystemd:::set_audit_resolver(function(scope) {
+        list(sink = s, audit_scope = audit_scope, system_durable_audit = FALSE)
+    })
+    list(sink = s, restore = function() rsystemd:::set_audit_resolver(old))
+}
+
 # A scriptable fake systemctl. `show_states` is a list of observed-field
 # lists returned by successive `show` calls (the last one repeats); effect
 # calls (start/stop/restart/enable/disable) return `effect_status` and
@@ -304,8 +323,163 @@ rsystemd:::set_runner(old)
 expect_equal(r$audit$authorized_via, "not_required")
 
 # --- input validation ---------------------------------------------------
+# Validation happens before any audit or effect, so these never write records.
 
 expect_error(systemd_start(c("a", "b")))
 expect_error(systemd_start("x", scope = "container"))
 expect_error(systemd_start("x", timeout = 0))
 expect_error(systemd_start("x", dry_run = NA))
+
+# --- durable audit: effect path writes intent then outcome, one cid ------
+
+fs <- with_fresh_sink()
+old <- rsystemd:::set_runner(fake_systemctl(
+    list(svc("active", "AAAA"), svc("active", "BBBB", scm = 2000L)),
+    advance_after = 2L))
+r <- systemd_restart("cups.service", timeout = 5)
+rsystemd:::set_runner(old)
+fs$restore()
+recs <- fs$sink$records()
+expect_equal(length(recs), 2L)
+expect_equal(recs[[1]]$phase, "intent")
+expect_equal(recs[[2]]$phase, "outcome")
+expect_equal(recs[[1]]$correlation_id, recs[[2]]$correlation_id)
+expect_equal(r$correlation_id, recs[[1]]$correlation_id)   # one id, result too
+expect_equal(recs[[1]]$effect_issued, FALSE)               # intent: not yet
+expect_equal(recs[[2]]$effect_issued, TRUE)                # outcome: issued
+expect_equal(recs[[2]]$outcome, "ok")
+expect_equal(r$audit_scope, "caller")
+expect_true(r$audit_persisted)
+
+# --- preview and no-op each write exactly one non-effect record ----------
+
+fs <- with_fresh_sink()
+old <- rsystemd:::set_runner(fake_systemctl(list(svc("inactive",
+    NA_character_))))
+r <- systemd_start("cups.service", dry_run = TRUE)
+rsystemd:::set_runner(old)
+fs$restore()
+recs <- fs$sink$records()
+expect_equal(length(recs), 1L)
+expect_equal(recs[[1]]$phase, "preview")
+expect_equal(recs[[1]]$effect_issued, FALSE)
+expect_equal(r$correlation_id, recs[[1]]$correlation_id)
+
+fs <- with_fresh_sink()
+old <- rsystemd:::set_runner(fake_systemctl(list(svc("active", "AAAA"))))
+r <- systemd_start("cups.service")
+rsystemd:::set_runner(old)
+fs$restore()
+recs <- fs$sink$records()
+expect_equal(length(recs), 1L)
+expect_equal(recs[[1]]$phase, "noop")
+expect_equal(recs[[1]]$effect_issued, FALSE)
+
+# --- fail-closed: intent not durable -> no effect issued, raises ---------
+
+fs <- with_fresh_sink(fail_on = function(rec) identical(rec$phase, "intent"))
+seen <- new.env()
+seen$effect <- FALSE
+probe_fc <- function(cmd, args) {
+    if (!any(args == "show")) seen$effect <- TRUE
+    fake_systemctl(list(svc("inactive", NA_character_),
+        svc("active", "Z1", scm = 2000L)), advance_after = 2L)(cmd, args)
+}
+old <- rsystemd:::set_runner(probe_fc)
+e <- tryCatch(systemd_start("cups.service", timeout = 5), error = identity)
+rsystemd:::set_runner(old)
+fs$restore()
+expect_inherits(e, "runix_audit_error")
+expect_false(seen$effect)                                  # gate 1: nothing issued
+
+# --- error path: typed failure recorded richly; cid on the condition -----
+
+fs <- with_fresh_sink()
+old <- rsystemd:::set_runner(fake_systemctl(
+    list(svc("inactive", NA_character_), svc("failed", "F1", scm = 2000L)),
+    advance_after = 2L))
+e <- tryCatch(systemd_start("bad.service", timeout = 5), error = identity)
+rsystemd:::set_runner(old)
+fs$restore()
+expect_inherits(e, "runix_operation_failed")               # typed class survives
+expect_equal(e$observed$active_state, "failed")            # observed survives
+expect_false(is.null(e$correlation_id))                    # cid on the error
+recs <- fs$sink$records()
+expect_equal(length(recs), 2L)
+expect_equal(recs[[2]]$phase, "outcome")
+expect_equal(recs[[2]]$outcome, "failed")                  # rich, not generic
+expect_equal(recs[[2]]$effect_issued, TRUE)
+expect_equal(e$correlation_id, recs[[1]]$correlation_id)
+
+# --- outcome-write failure must not mask the mutation result -------------
+
+fs <- with_fresh_sink(fail_on = function(rec) identical(rec$phase, "outcome"))
+old <- rsystemd:::set_runner(fake_systemctl(
+    list(svc("active", "AAAA"), svc("active", "BBBB", scm = 2000L)),
+    advance_after = 2L))
+r <- systemd_restart("cups.service", timeout = 5)
+rsystemd:::set_runner(old)
+fs$restore()
+expect_equal(r$operation, "systemd.restart")               # result intact
+expect_true(r$changed)
+expect_false(r$audit_persisted)                            # honest: not durable
+
+# --- audit_scope reflects the resolved authority (user scope) ------------
+
+fs <- with_fresh_sink(audit_scope = "user")
+old <- rsystemd:::set_runner(fake_systemctl(
+    list(svc("active", "AAAA"), svc("active", "BBBB", scm = 2000L)),
+    advance_after = 2L))
+r <- systemd_restart("cups.service", scope = "user", timeout = 5)
+rsystemd:::set_runner(old)
+fs$restore()
+expect_equal(r$audit_scope, "user")
+
+# --- live: disposable user-scope unit, real systemctl + durable audit ----
+# at_home only, and only where a user systemd manager is reachable.
+user_ok <- nzchar(Sys.which("systemctl")) &&
+    identical(0L, tryCatch(system2("systemctl",
+        c("--user", "show-environment"), stdout = FALSE, stderr = FALSE),
+        error = function(e) 1L))
+if (at_home() && user_ok && nzchar(Sys.which("systemd-run"))) {
+    xdgtmp <- tempfile("xdg-")
+    dir.create(xdgtmp)
+    old_xdg <- Sys.getenv("XDG_STATE_HOME", unset = NA)
+    Sys.setenv(XDG_STATE_HOME = xdgtmp)
+    keep <- rsystemd:::set_audit_resolver(NULL)   # use the real runix resolver
+    unit <- paste0("runix-live-", Sys.getpid(), ".service")
+    system2("systemd-run", c("--user", "--collect", paste0("--unit=", unit),
+        "sleep", "600"), stdout = FALSE, stderr = FALSE)
+    Sys.sleep(0.4)
+
+    # happy path: real restart, durable caller-owned audit
+    r <- tryCatch(systemd_restart(unit, scope = "user", timeout = 25),
+        error = identity)
+    if (!inherits(r, "condition")) {
+        expect_equal(r$operation, "systemd.restart")
+        expect_equal(r$audit_scope, "user")
+        expect_true(r$audit_persisted)
+        sinkfile <- file.path(xdgtmp, "runix", "audit.jsonl")
+        expect_true(file.exists(sinkfile))
+        expect_true(length(readLines(sinkfile, warn = FALSE)) >= 2L)
+    }
+
+    # error path: a nonexistent unit yields a typed error carrying a cid
+    e <- tryCatch(systemd_restart(paste0("runix-nope-", Sys.getpid(),
+        ".service"), scope = "user", timeout = 10), error = identity)
+    expect_inherits(e, "rsystemd_error")
+    expect_false(is.null(e$correlation_id))
+
+    # cleanup
+    system2("systemctl", c("--user", "stop", unit), stdout = FALSE,
+        stderr = FALSE)
+    system2("systemctl", c("--user", "reset-failed", unit),
+        stdout = FALSE, stderr = FALSE)
+    if (is.na(old_xdg)) Sys.unsetenv("XDG_STATE_HOME") else {
+        Sys.setenv(XDG_STATE_HOME = old_xdg)
+    }
+    rsystemd:::set_audit_resolver(keep)
+}
+
+# Restore the default resolver for any later test file in the session.
+rsystemd:::set_audit_resolver(NULL)
