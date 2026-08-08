@@ -4,7 +4,7 @@
 
 new_systemd_result <- function(operation, resource, changed, state_changed,
                                preview, before, after, planned, completion,
-                               outcome = "ok") {
+                               authorized_via = "unknown", outcome = "ok") {
     structure(
               list(
                    operation = operation,
@@ -17,7 +17,9 @@ new_systemd_result <- function(operation, resource, changed, state_changed,
                    planned = planned,
                    completion = completion,
                    audit = new_audit(operation, resource, preview, changed,
-                                     state_changed, completion, outcome = outcome)
+                                     state_changed, completion,
+                                     authorized_via = authorized_via,
+                                     outcome = outcome)
         ),
               class = c("systemd_result", "runix_result")
     )
@@ -25,15 +27,34 @@ new_systemd_result <- function(operation, resource, changed, state_changed,
 
 ## The audit record. `actor` is the caller's uid resolved once; failures
 ## build their own audit via this same helper with the matching outcome.
+## authorized_via records how (or whether) the effect was authorized — never
+## asserted on previews/no-ops, where no effect was issued (see authz_for).
 new_audit <- function(operation, resource, preview, changed, state_changed,
-                      completion, outcome) {
+                      completion, authorized_via, outcome) {
     list(operation = operation, resource = resource, preview = preview,
          changed = changed, state_changed = state_changed,
-         actor = actor_id(),
-         authorized_via = "polkit:org.freedesktop.systemd1",
+         actor = actor_id(), authorized_via = authorized_via,
          completion_method = completion$method,
          job_result = completion$job_result, time = current_time(),
          outcome = outcome)
+}
+
+## Explicit authorization descriptor for the audit record. No effect issued
+## (preview or idempotent no-op) => "not_required". A user-scope effect goes
+## through the caller's own manager, not a system polkit action =>
+## "not_required". A system-scope effect => the polkit action systemd itself
+## checks for that verb.
+authz_for <- function(operation, scope, effect_issued) {
+    if (!effect_issued || identical(scope, "user")) {
+        return("not_required")
+    }
+    action <- switch(operation, "systemd.start" =, "systemd.stop" =,
+                     "systemd.restart" = "manage-units", "systemd.enable" =,
+                     "systemd.disable" = "manage-unit-files", NULL)
+    if (is.null(action)) {
+        return("unknown")
+    }
+    paste0("polkit:org.freedesktop.systemd1.", action)
 }
 
 ## Caller identity for the audit trail: numeric uid and login name.
