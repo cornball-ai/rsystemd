@@ -47,12 +47,13 @@ authz_for <- function(operation, scope, effect_issued) {
     paste0("polkit:org.freedesktop.systemd1.", action)
 }
 
-## Caller identity for the audit trail: numeric uid and login name.
+## Caller identity for the audit trail: the normalized "uid:<numeric uid>" form
+## shared by every Runix sink (durable-audit-contract.md). The numeric uid is
+## authoritative; a display name is deliberately not part of the value.
 actor_id <- function() {
     uid <- tryCatch(as.integer(system2("id", "-u", stdout = TRUE,
                                        stderr = FALSE)[1L]), error = function(e) NA_integer_)
-    name <- tryCatch(Sys.info()[["user"]], error = function(e) NA_character_)
-    paste0(if (is.na(name)) "?" else name, "(", uid, ")")
+    paste0("uid:", if (is.na(uid)) "unknown" else uid)
 }
 
 ## Wall-clock stamp for the audit record only (never for poll timing —

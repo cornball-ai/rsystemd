@@ -1,3 +1,11 @@
+# rsystemd 0.0.1.9
+
+Normalize the caller identity in mutation results and audit records to the
+shared `uid:<numeric uid>` form (durable-audit-contract.md), replacing the
+previous `name(uid)` display string. The numeric uid is authoritative and now
+matches what every Runix sink (including the audit broker) records. This is a
+user-facing change to `result$audit$actor` and the persisted audit `actor`.
+
 # rsystemd 0.0.1.8
 
 Adopt the runix receipt-based sink interface (`open_intent`/`write_outcome`):
