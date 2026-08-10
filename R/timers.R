@@ -30,43 +30,29 @@ systemd_timers <- function() {
 }
 
 ## Pure parser for systemctl list-timers JSON. next/last are usec-epoch
-## numbers; JSON null means NA (not scheduled / never triggered).
+## numbers; JSON null means NA (not scheduled / never triggered). Strict
+## per-field validation lives in R/parse_json.R.
 parse_timers_json <- function(txt) {
-    empty <- data.frame(timer = character(),
-                        next_elapse = as.POSIXct(character(), tz = "UTC"),
-                        last_trigger = as.POSIXct(character(), tz = "UTC"),
-                        activates = character(), active_state = character(),
-                        stringsAsFactors = FALSE)
     if (!nzchar(trimws(txt))) {
-        return(empty)
+        return(data.frame(timer = character(),
+                          next_elapse = as.POSIXct(character(), tz = "UTC"),
+                          last_trigger = as.POSIXct(character(), tz = "UTC"),
+                          activates = character(), active_state = character(),
+                          stringsAsFactors = FALSE))
     }
-    dat <- tryCatch(
-                    jsonlite::fromJSON(txt),
-                    error = function(e) {
-        stop_rsystemd("unparseable systemctl list-timers JSON: ",
-                      conditionMessage(e),
-                      class = "runix_parse_error")
-    }
-    )
-    if (length(dat) == 0L) {
-        return(empty)
-    }
-    need <- c("next", "last", "unit", "activates")
-    missing <- setdiff(need, names(dat))
-    if (length(missing) > 0L) {
-        stop_rsystemd("list-timers JSON missing field(s): ",
-                      paste(missing, collapse = ", "),
-                      class = "runix_parse_error")
-    }
+    cols <- .json_columns(txt, list(
+                                    list(key = "unit", type = "character"),
+                                    list(key = "next", type = "number", nullable = TRUE),
+                                    list(key = "last", type = "number", nullable = TRUE),
+                                    list(key = "activates", type = "character")),
+                          "systemctl list-timers")
     usec_time <- function(x) {
         as.POSIXct(as.numeric(x) / 1e6, origin = "1970-01-01", tz = "UTC")
     }
-    data.frame(
-               timer = dat$unit,
-               next_elapse = usec_time(dat[["next"]]),
-               last_trigger = usec_time(dat$last),
-               activates = dat$activates,
-               active_state = NA_character_,
-               stringsAsFactors = FALSE
-    )
+    data.frame(timer = cols$unit,
+               next_elapse = usec_time(cols[["next"]]),
+               last_trigger = usec_time(cols$last),
+               activates = cols$activates,
+               active_state = rep(NA_character_, length(cols$unit)),
+               stringsAsFactors = FALSE)
 }

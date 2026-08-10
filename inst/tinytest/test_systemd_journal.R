@@ -76,6 +76,14 @@ db <- systemd_journal()
 rsystemd:::set_runner(old)
 expect_equal(db$message, "hi")
 
+# --- A byte-array element outside 0:255 is refused, not coerced ---
+
+rsystemd:::set_runner(fake(paste0('{"__REALTIME_TIMESTAMP":"1754600000000000",',
+    '"PRIORITY":"6","MESSAGE":[104,999]}')))
+e <- tryCatch(systemd_journal(), error = identity)
+rsystemd:::set_runner(old)
+expect_inherits(e, "runix_parse_error")
+
 # --- Non-zero exit status is an error ---
 
 rsystemd:::set_runner(fake(character(), status = 1L))
