@@ -39,12 +39,12 @@ parse_units_json <- function(txt) {
                           description = character(), stringsAsFactors = FALSE))
     }
     cols <- .json_columns(txt, list(
-        list(key = "unit", type = "character"),
-        list(key = "load", type = "character"),
-        list(key = "active", type = "character"),
-        list(key = "sub", type = "character"),
-        list(key = "description", type = "character")),
-        "systemctl list-units")
+                                    list(key = "unit", type = "character"),
+                                    list(key = "load", type = "character"),
+                                    list(key = "active", type = "character"),
+                                    list(key = "sub", type = "character"),
+                                    list(key = "description", type = "character")),
+                          "systemctl list-units")
     data.frame(unit = cols$unit, load_state = cols$load,
                active_state = cols$active, sub_state = cols$sub,
                description = cols$description, stringsAsFactors = FALSE)

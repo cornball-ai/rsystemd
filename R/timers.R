@@ -41,11 +41,11 @@ parse_timers_json <- function(txt) {
                           stringsAsFactors = FALSE))
     }
     cols <- .json_columns(txt, list(
-        list(key = "unit", type = "character"),
-        list(key = "next", type = "number", nullable = TRUE),
-        list(key = "last", type = "number", nullable = TRUE),
-        list(key = "activates", type = "character")),
-        "systemctl list-timers")
+                                    list(key = "unit", type = "character"),
+                                    list(key = "next", type = "number", nullable = TRUE),
+                                    list(key = "last", type = "number", nullable = TRUE),
+                                    list(key = "activates", type = "character")),
+                          "systemctl list-timers")
     usec_time <- function(x) {
         as.POSIXct(as.numeric(x) / 1e6, origin = "1970-01-01", tz = "UTC")
     }

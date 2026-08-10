@@ -79,8 +79,9 @@
     for (j in seq_along(fields)) {
         f <- fields[[j]]
         tmpl <- switch(f$type, character = character(1), number = numeric(1))
-        out[[j]] <- vapply(rows, .json_field, tmpl, key = f$key, type = f$type,
-                           nullable = isTRUE(f$nullable), label = label)
+        out[[j]] <- vapply(rows, .json_field, tmpl, key = f$key,
+                           type = f$type, nullable = isTRUE(f$nullable),
+                           label = label)
     }
     out
 }
@@ -100,7 +101,7 @@
     if (is.list(v)) {
         bytes <- vapply(v, function(b) {
             if (!(is.numeric(b) && length(b) == 1L && !is.na(b) &&
-                  b >= 0 && b <= 255 && b == as.integer(b))) {
+                        b >= 0 && b <= 255 && b == as.integer(b))) {
                 stop_rsystemd("journal field '", key,
                               "' has a non-byte array element",
                               class = "runix_parse_error")
