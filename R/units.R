@@ -30,36 +30,22 @@ systemd_units <- function(pattern = NULL) {
 }
 
 ## Pure parser, separated from the runner so fixture tests exercise it
-## offline. Fail-closed: invalid JSON or missing fields is an error.
+## offline. Fail-closed: invalid JSON, a non-object row, or a missing/wrong-typed
+## field is an error (strict per-field validation in R/parse_json.R).
 parse_units_json <- function(txt) {
-    empty <- data.frame(unit = character(), load_state = character(),
-                        active_state = character(), sub_state = character(),
-                        description = character(), stringsAsFactors = FALSE)
     if (!nzchar(trimws(txt))) {
-        return(empty)
+        return(data.frame(unit = character(), load_state = character(),
+                          active_state = character(), sub_state = character(),
+                          description = character(), stringsAsFactors = FALSE))
     }
-    dat <- tryCatch(
-                    jsonlite::fromJSON(txt),
-                    error = function(e) {
-        stop_rsystemd("unparseable systemctl JSON output: ",
-                      conditionMessage(e),
-                      class = "runix_parse_error")
-    }
-    )
-    if (length(dat) == 0L) {
-        return(empty)
-    }
-    need <- c("unit", "load", "active", "sub", "description")
-    missing <- setdiff(need, names(dat))
-    if (length(missing) > 0L) {
-        stop_rsystemd("systemctl JSON output missing field(s): ",
-                      paste(missing, collapse = ", "),
-                      class = "runix_parse_error")
-    }
-    data.frame(
-               unit = dat$unit, load_state = dat$load,
-               active_state = dat$active, sub_state = dat$sub,
-               description = dat$description,
-               stringsAsFactors = FALSE
-    )
+    cols <- .json_columns(txt, list(
+        list(key = "unit", type = "character"),
+        list(key = "load", type = "character"),
+        list(key = "active", type = "character"),
+        list(key = "sub", type = "character"),
+        list(key = "description", type = "character")),
+        "systemctl list-units")
+    data.frame(unit = cols$unit, load_state = cols$load,
+               active_state = cols$active, sub_state = cols$sub,
+               description = cols$description, stringsAsFactors = FALSE)
 }

@@ -73,27 +73,24 @@ parse_journal_json <- function(lines) {
     }
     recs <- vector("list", length(lines))
     for (i in seq_along(lines)) {
-        recs[[i]] <- tryCatch(
-                              jsonlite::fromJSON(lines[i]),
-                              error = function(e) {
+        rec <- tryCatch(
+                        janssonr::from_json(lines[i]),
+                        error = function(e) {
             stop_rsystemd("unparseable journal JSON (line ", i, "): ",
                           conditionMessage(e),
                           class = "runix_parse_error")
         }
         )
-    }
-    chr1 <- function(r, k) {
-        v <- r[[k]]
-        if (is.null(v)) {
-            NA_character_
-        } else if (is.character(v)) {
-            v[1L]
-        } else if (is.numeric(v)) {
-            rawToChar(as.raw(v))
-        } else {
-            NA_character_
+        ## journalctl -o json emits one object per line
+        if (!is.list(rec) || is.null(names(rec))) {
+            stop_rsystemd("journal entry ", i, " is not an object",
+                          class = "runix_parse_error")
         }
+        recs[[i]] <- rec
     }
+    ## janssonr maps a byte-array field (non-UTF-8 value) to an unnamed list of
+    ## byte integers; .journal_chr validates and decodes it (see parse_json.R).
+    chr1 <- .journal_chr
     int_strict <- function(x, what) {
         out <- suppressWarnings(as.integer(x))
         bad <- !is.na(x) & is.na(out)
