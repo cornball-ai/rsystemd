@@ -15,7 +15,11 @@ new_systemd_result <- function(operation, resource, changed, state_changed,
                             audit, subclass = "systemd_result")
 }
 
-## The audit record. `actor` is the caller's uid resolved once; failures
+## The audit record. `actor` is the caller's normalized uid from the shared
+## runix core helper, kept on the in-memory result for the caller to read; it
+## is NOT placed in the record handed to a sink. `actor` is sink-derived
+## framing: a local sink stamps it, and the broker derives it from SO_PEERCRED
+## and rejects a client-supplied one (runix durable-audit-contract.md). Failures
 ## build their own audit via this same helper with the matching outcome.
 ## authorized_via records how (or whether) the effect was authorized — never
 ## asserted on previews/no-ops, where no effect was issued (see authz_for).
@@ -23,7 +27,7 @@ new_audit <- function(operation, resource, preview, changed, state_changed,
                       completion, authorized_via, outcome) {
     list(operation = operation, resource = resource, preview = preview,
          changed = changed, state_changed = state_changed,
-         actor = actor_id(), authorized_via = authorized_via,
+         actor = runix::audit_actor(), authorized_via = authorized_via,
          completion_method = completion$method,
          job_result = completion$job_result, time = current_time(),
          outcome = outcome)
@@ -45,15 +49,6 @@ authz_for <- function(operation, scope, effect_issued) {
         return("unknown")
     }
     paste0("polkit:org.freedesktop.systemd1.", action)
-}
-
-## Caller identity for the audit trail: the normalized "uid:<numeric uid>" form
-## shared by every Runix sink (durable-audit-contract.md). The numeric uid is
-## authoritative; a display name is deliberately not part of the value.
-actor_id <- function() {
-    uid <- tryCatch(as.integer(system2("id", "-u", stdout = TRUE,
-                                       stderr = FALSE)[1L]), error = function(e) NA_integer_)
-    paste0("uid:", if (is.na(uid)) "unknown" else uid)
 }
 
 ## Wall-clock stamp for the audit record only (never for poll timing —

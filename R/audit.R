@@ -42,7 +42,7 @@ stamp_result <- function(result, cid, audit_scope, audit_persisted) {
 ## effect is issued.
 intent_record <- function(operation, unit, scope, audit_scope) {
     list(operation = operation, resource = unit, scope = scope,
-         preview = FALSE, effect_issued = FALSE, actor = actor_id(),
+         preview = FALSE, effect_issued = FALSE,
          audit_scope = audit_scope, outcome = "intent")
 }
 
@@ -55,7 +55,7 @@ audit_record_from_result <- function(result, effect_issued, audit_scope,
     list(operation = a$operation, resource = a$resource, scope = scope,
          preview = a$preview, effect_issued = effect_issued,
          changed = a$changed, state_changed = a$state_changed,
-         actor = a$actor, authorized_via = a$authorized_via,
+         authorized_via = a$authorized_via,
          completion_method = a$completion_method, job_result = a$job_result,
          observed = result$after, audit_scope = audit_scope,
          outcome = a$outcome)
@@ -72,7 +72,7 @@ audit_record_from_condition <- function(cond, operation, unit, scope,
         resource <- cond$resource
     }
     list(operation = operation, resource = resource, scope = scope,
-         preview = FALSE, effect_issued = TRUE, actor = actor_id(),
+         preview = FALSE, effect_issued = TRUE,
          observed = cond$observed,
          observed_failed = if (is.null(cond$observed_failed)) {
             NA

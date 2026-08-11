@@ -350,6 +350,23 @@ expect_equal(recs[[2]]$effect_issued, TRUE)                # outcome: issued
 expect_equal(recs[[2]]$outcome, "ok")
 expect_equal(r$audit_scope, "caller")
 expect_true(r$audit_persisted)
+# actor is sink-derived framing (runix >= 0.0.1.8): the record builder no
+# longer supplies it, the sink stamps a normalized uid:N, and the in-memory
+# result still carries audit$actor from the shared runix helper. This is the
+# fix for the A1-canary finding -- a client-supplied actor made the broker
+# reject every unprivileged system-scope mutation as schema_invalid.
+expect_true(grepl("^uid:", recs[[1]]$actor))          # sink-stamped on intent
+expect_true(grepl("^uid:", recs[[2]]$actor))          # and on outcome
+expect_true(grepl("^uid:", r$audit$actor))            # kept on the result
+# the domain-record builders never emit actor themselves (regression guard so
+# a producer never again trips the broker's reserved-key rejection):
+ir <- rsystemd:::intent_record("systemd.restart", "cups.service", "system",
+                               "caller")
+expect_false("actor" %in% names(ir))
+cr <- rsystemd:::audit_record_from_condition(
+    structure(list(observed = NULL, elapsed = 0), class = "runix_timeout"),
+    "systemd.restart", "cups.service", "system", "caller")
+expect_false("actor" %in% names(cr))
 
 # --- preview and no-op each write exactly one non-effect record ----------
 

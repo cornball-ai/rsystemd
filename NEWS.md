@@ -1,3 +1,17 @@
+# rsystemd 0.0.1.12
+
+`actor` is no longer placed in the audit record handed to a sink. It is
+authority-derived framing, not domain content: the local sink stamps it and the
+audit broker derives it from `SO_PEERCRED` and rejects a client-supplied one.
+The three record builders (intent, outcome, condition) no longer emit `actor`;
+the in-memory `result$audit$actor` is retained but now comes from the shared
+`runix::audit_actor()` helper rather than a private `actor_id()`. Requires
+`runix (>= 0.0.1.8)`.
+
+This fixes an A1-canary finding: an unprivileged system-scope mutation routed
+through the broker was rejected `schema_invalid` (the broker owns `actor`),
+which fail-closed blocked every such mutation.
+
 # rsystemd 0.0.1.9
 
 Normalize the caller identity in mutation results and audit records to the
