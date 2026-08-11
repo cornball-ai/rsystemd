@@ -13,10 +13,17 @@
 #'   never active), \code{main_pid} (integer, NA when none),
 #'   \code{memory_current} (numeric bytes, NA when not set),
 #'   \code{restarts} (integer), \code{invocation_id} (character, the
-#'   systemd per-(re)start id, NA when the unit is not running), and
+#'   systemd per-(re)start id, NA when the unit is not running),
 #'   \code{state_change_monotonic} (numeric microseconds since boot,
-#'   monotonic, NA when unset). The last two are the correlation markers
-#'   Phase 2 mutations use to confirm a fresh job ran.
+#'   monotonic, NA when unset), \code{result} (character, systemd's
+#'   \code{Result}, e.g. \code{"success"}/\code{"exit-code"}/
+#'   \code{"start-limit-hit"}, NA when absent), and \code{exec_main_status}
+#'   (integer, the main process exit status, NA when absent).
+#'   \code{invocation_id} and \code{state_change_monotonic} are the
+#'   correlation markers Phase 2 mutations use to confirm a fresh job ran;
+#'   \code{result} and \code{exec_main_status} tell a caller WHY a unit
+#'   stopped and WHAT it exited with (e.g. \code{exit-code}/1 vs
+#'   \code{start-limit-hit}).
 #' @examples
 #' \dontrun{
 #' info <- systemd_unit_info("ssh.service")
@@ -34,7 +41,7 @@ systemd_unit_info <- function(unit, scope = "system") {
     props <- c("Id", "Description", "LoadState", "ActiveState", "SubState",
                "UnitFileState", "FragmentPath", "ActiveEnterTimestamp",
                "MainPID", "MemoryCurrent", "NRestarts", "InvocationID",
-               "StateChangeTimestampMonotonic")
+               "StateChangeTimestampMonotonic", "Result", "ExecMainStatus")
     if (identical(scope, "user")) {
         user_flag <- "--user"
     } else {
@@ -135,6 +142,8 @@ parse_unit_show <- function(lines) {
          memory_current = memory_current,
          restarts = int_strict(val("NRestarts"), "NRestarts"),
          invocation_id = invocation_id,
-         state_change_monotonic = state_change_monotonic
+         state_change_monotonic = state_change_monotonic,
+         result = val("Result"),
+         exec_main_status = int_strict(val("ExecMainStatus"), "ExecMainStatus")
     )
 }
