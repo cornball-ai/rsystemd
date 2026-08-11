@@ -1,0 +1,147 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+env:
+  _R_CHECK_FORCE_SUGGESTS_: "false"
+
+# rsystemd is a Linux/systemd package (OS_type: unix; the mutation path drives
+# systemctl and routes durable audit through the Linux-only broker). CI is
+# Linux-focused on purpose -- no macOS/Windows matrix, because the subsystem it
+# administers does not exist there.
+jobs:
+  # Standard checks: install the stack, run the offline tinytest suite, and
+  # R CMD check for CRAN cleanliness. runix (the sole non-CRAN Import) is a
+  # public sibling installed from source; janssonr ships as an apt binary.
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup r-ci
+        uses: eddelbuettel/github-actions/r-ci@master
+        with:
+          backend: RAPT
+
+      - name: Install janssonr from the cornball apt repository
+        run: |
+          sudo tee /etc/apt/sources.list.d/janssonr.sources > /dev/null <<'EOF'
+          Types: deb
+          URIs: https://cornball-ai.github.io/janssonr
+          Suites: noble
+          Components: main
+          Trusted: yes
+          Enabled: yes
+          EOF
+          sudo apt-get update
+          sudo apt-get install -y r-cornball-janssonr
+
+      # runix is a public sibling and rsystemd's only non-CRAN Import; install
+      # from source (it compiles the AF_UNIX audit-broker client). tinytest is
+      # the one test dep.
+      - name: Install runix (public sibling Import) + tinytest
+        run: |
+          git clone --depth 1 https://github.com/cornball-ai/runix.git \
+            "${RUNNER_TEMP}/runix"
+          R CMD INSTALL "${RUNNER_TEMP}/runix"
+          Rscript -e 'install.packages("tinytest")'
+
+      - name: Install rsystemd
+        run: R CMD INSTALL .
+
+      - name: Tests (offline; fakes injected via set_runner/set_audit_resolver)
+        run: |
+          Rscript -e 'r <- tinytest::test_package("rsystemd"); n <- sum(!vapply(r, isTRUE, logical(1))); cat(length(r), "checks,", n, "failures\n"); quit(status = as.integer(n > 0))'
+
+      - name: R CMD check (CRAN cleanliness)
+        run: |
+          R CMD build --no-build-vignettes --no-manual .
+          _R_CHECK_FORCE_SUGGESTS_=false R CMD check --no-manual rsystemd_*.tar.gz
+
+  # The production-path gate the A1 canary said was missing: an UNPRIVILEGED
+  # rsystemd system mutation -> the real, socket-activated broker -> a durable
+  # SYSTEM intent+outcome pair whose actor is derived from the caller's kernel
+  # credentials (SO_PEERCRED), NOT supplied in the record. This is exactly the
+  # path that was fail-closed broken when rsystemd put `actor` in the record;
+  # it now runs end-to-end here so a regression cannot merge silently.
+  broker-integration:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Prove systemd is the service manager
+        run: test -d /run/systemd/system
+
+      - name: Build + install the broker .deb, socket-activate it (as root)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libjansson-dev pkg-config build-essential debhelper fakeroot polkitd
+          git clone --depth 1 --branch v0.0.1 \
+            https://github.com/cornball-ai/runix-audit-broker.git "${RUNNER_TEMP}/rab"
+          cd "${RUNNER_TEMP}/rab"
+          dpkg-buildpackage -us -uc -b
+          sudo dpkg -i ../runix-audit-broker_*.deb
+          sudo systemctl daemon-reload
+          sudo systemctl start runix-audit.socket
+          test -S /run/runix-audit.sock
+
+      - name: Setup r-ci
+        uses: eddelbuettel/github-actions/r-ci@master
+        with:
+          backend: RAPT
+      - name: Install janssonr from the cornball apt repository
+        run: |
+          sudo tee /etc/apt/sources.list.d/janssonr.sources > /dev/null <<'EOF'
+          Types: deb
+          URIs: https://cornball-ai.github.io/janssonr
+          Suites: noble
+          Components: main
+          Trusted: yes
+          Enabled: yes
+          EOF
+          sudo apt-get update
+          sudo apt-get install -y r-cornball-janssonr
+      - name: Install runix + rsystemd
+        run: |
+          git clone --depth 1 https://github.com/cornball-ai/runix.git \
+            "${RUNNER_TEMP}/runix"
+          R CMD INSTALL "${RUNNER_TEMP}/runix"
+          R CMD INSTALL .
+
+      - name: Unprivileged principal, harmless unit, narrow polkit rule
+        run: |
+          sudo useradd -m -u 2001 canary
+          sudo tee /etc/systemd/system/runix-canary.service > /dev/null <<'EOF'
+          [Unit]
+          Description=rsystemd CI canary target (harmless)
+          [Service]
+          Type=simple
+          ExecStart=/usr/bin/sleep infinity
+          Restart=no
+          EOF
+          sudo tee /etc/polkit-1/rules.d/49-runix-canary.rules > /dev/null <<'EOF'
+          polkit.addRule(function(action, subject) {
+              if (action.id == "org.freedesktop.systemd1.manage-units" &&
+                  subject.user == "canary") {
+                  if (action.lookup("unit") == "runix-canary.service") {
+                      return polkit.Result.YES;
+                  }
+                  return polkit.Result.NO;
+              }
+          });
+          EOF
+          sudo systemctl daemon-reload
+          sudo systemctl start runix-canary.service
+          sudo systemctl restart polkit
+
+      - name: Unprivileged mutation -> real broker -> durable system record
+        run: sudo -u canary CANARY_UID=2001 Rscript .github/integration/mutate_through_broker.R
+
+      - name: Root-inspect the durable sink (identity, pairing, peer creds)
+        run: sudo CANARY_UID=2001 Rscript .github/integration/inspect_sink.R
+
+      - name: Negative authorization - an unrelated unit is denied
+        run: sudo -u canary Rscript .github/integration/denied_unrelated.R
