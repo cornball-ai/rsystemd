@@ -42,8 +42,8 @@ stamp_result <- function(result, cid, audit_scope, audit_persisted) {
 ## effect is issued.
 intent_record <- function(operation, unit, scope, audit_scope) {
     list(operation = operation, resource = unit, scope = scope,
-         preview = FALSE, effect_issued = FALSE,
-         audit_scope = audit_scope, outcome = "intent")
+         preview = FALSE, effect_issued = FALSE, audit_scope = audit_scope,
+         outcome = "intent")
 }
 
 ## Domain content of an outcome / non-effect record built from a systemd_result.
