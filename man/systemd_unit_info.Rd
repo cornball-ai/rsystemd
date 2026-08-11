@@ -18,10 +18,17 @@ A named list: \code{unit}, \code{description}, \code{load_state},
   never active), \code{main_pid} (integer, NA when none),
   \code{memory_current} (numeric bytes, NA when not set),
   \code{restarts} (integer), \code{invocation_id} (character, the
-  systemd per-(re)start id, NA when the unit is not running), and
+  systemd per-(re)start id, NA when the unit is not running),
   \code{state_change_monotonic} (numeric microseconds since boot,
-  monotonic, NA when unset). The last two are the correlation markers
-  Phase 2 mutations use to confirm a fresh job ran.
+  monotonic, NA when unset), \code{result} (character, systemd's
+  \code{Result}, e.g. \code{"success"}/\code{"exit-code"}/
+  \code{"start-limit-hit"}, NA when absent), and \code{exec_main_status}
+  (integer, the main process exit status, NA when absent).
+  \code{invocation_id} and \code{state_change_monotonic} are the
+  correlation markers Phase 2 mutations use to confirm a fresh job ran;
+  \code{result} and \code{exec_main_status} tell a caller WHY a unit
+  stopped and WHAT it exited with (e.g. \code{exit-code}/1 vs
+  \code{start-limit-hit}).
 }
 \description{
 Queries systemctl show for a documented subset of unit properties.

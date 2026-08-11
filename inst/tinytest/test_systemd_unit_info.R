@@ -41,6 +41,43 @@ expect_true(is.na(nf$memory_current))
 expect_true(is.na(nf$active_enter_time))
 expect_equal(nf$fragment_path, "")
 
+# --- Result + ExecMainStatus: the exited-branch evidence ---
+
+# an active unit reports success / 0
+rsystemd:::set_runner(fake(c("Id=x.service", "LoadState=loaded",
+    "ActiveState=active", "SubState=running", "Result=success",
+    "ExecMainStatus=0")))
+okr <- systemd_unit_info("x.service")
+rsystemd:::set_runner(old)
+expect_equal(okr$result, "success")
+expect_equal(okr$exec_main_status, 0L)
+
+# an exited-with-error unit carries WHY it stopped and WHAT it exited with, so
+# a caller can tell exit-code/1 apart from start-limit-hit (both read "failed")
+rsystemd:::set_runner(fake(c("Id=x.service", "LoadState=loaded",
+    "ActiveState=failed", "SubState=failed", "Result=exit-code",
+    "ExecMainStatus=1")))
+badr <- systemd_unit_info("x.service")
+rsystemd:::set_runner(old)
+expect_equal(badr$active_state, "failed")
+expect_equal(badr$result, "exit-code")
+expect_equal(badr$exec_main_status, 1L)
+
+# absent Result / ExecMainStatus -> NA (older managers)
+rsystemd:::set_runner(fake(c("Id=x.service", "LoadState=loaded",
+    "ActiveState=active")))
+nor <- systemd_unit_info("x.service")
+rsystemd:::set_runner(old)
+expect_true(is.na(nor$result))
+expect_true(is.na(nor$exec_main_status))
+
+# non-numeric ExecMainStatus fails closed
+rsystemd:::set_runner(fake(c("Id=x.service", "LoadState=loaded",
+    "ExecMainStatus=notanumber")))
+e <- tryCatch(systemd_unit_info("x.service"), error = identity)
+rsystemd:::set_runner(old)
+expect_inherits(e, "runix_parse_error")
+
 # --- Fail-closed on non-key=value output and bad timestamps ---
 
 rsystemd:::set_runner(fake(c("this is not key value")))
